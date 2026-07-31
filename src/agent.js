@@ -7,6 +7,7 @@ import {
   LoopingPrompt,
   normalPrompt,
   toolAnalyse,
+  toolOutputAnalysis,
   websitePrompt,
 } from "./config/Harnes.js";
 import { webSearch } from "./config/tavily.js";
@@ -205,16 +206,37 @@ ${article.textContent.slice(0, 120000)}
       ],
     });
 
-    const identifiedTool = toolAnalysis.choices[0].message.content.toolName;
+    const identifiedTool = JSON.parse(toolAnalysis.choices[0].message.content).toolName;
     if(!identifiedTool) return toolAnalysis.choices[0].message.content;
 
-    console.log(toolAnalysis.choices[0].message.content)
 
-    // for(let i = 0 ; i < availableTools.length ; i++){
-    //   if(availableTools[i].name === identifiedTool){
-    //     availableTools
-    //   }
-    // }
+    let args = JSON.parse(toolAnalysis.choices[0].message.content).args
+
+
+
+    let response = ""
+
+    for(let i = 0 ; i < availableTools.length ; i++){
+      if(availableTools[i].name === identifiedTool){
+        response = await availableTools[i].method(args)
+      }
+    }
+
+    const finalResult = await await this.client.chat.completions.create({
+      model : this.model,
+      messages :[
+        {
+          role:"system",
+          content:`
+            ${toolOutputAnalysis}
+            response :- ${JSON.stringify(response)}
+            user query :- ${query}
+          `
+        }
+      ]
+    })
+
+    return JSON.parse(finalResult.choices[0].message.content);
   }
 
   async run() {

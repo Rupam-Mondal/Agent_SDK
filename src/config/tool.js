@@ -12,6 +12,41 @@ export const getWeather = {
   },
 };
 
+export const randomJoke = {
+  name: "randomJoke",
+  description: "Get a random programming joke.",
+
+  async execute() {
+    const joke = await fetch(
+      "https://official-joke-api.appspot.com/jokes/programming/random"
+    ).then(res => res.json());
+
+    return joke[0];
+  }
+};
+
+export const predictGender = {
+  name: "predictGender",
+  description: "Predict gender from a first name.",
+
+  async execute({ name }) {
+    return await fetch(
+      `https://api.genderize.io?name=${encodeURIComponent(name)}`
+    ).then(res => res.json());
+  }
+};
+
+export const predictAge = {
+  name: "predictAge",
+  description: "Predict a person's age from their first name.",
+
+  async execute({ name }) {
+    return await fetch(
+      `https://api.agify.io?name=${encodeURIComponent(name)}`
+    ).then(res => res.json());
+  }
+};
+
 export const calculator = {
   name: "calculator",
   description: "Perform basic mathematical calculations.",

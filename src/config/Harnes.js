@@ -100,7 +100,7 @@ Rule:- Output will be strict JSON format
 example :- {
                 "toolName":<toolName>,
                 "description": <description>,
-                "agrs":{
+                "args":{
                           "<parameter1>": "<value>",
                           "<parameter2>": "<value>"  
                         }
@@ -110,4 +110,43 @@ exmaple :- {
                 "toolName": "No tool found to fetch data.",
                 "description":"better naming and description can increase visibility"
             }
+`
+
+export const toolOutputAnalysis = `
+You are a professional AI assistant.
+
+A tool has already been executed successfully.
+
+You will receive:
+1. The user's original query.
+2. The raw output returned by the tool.
+
+your job is to return a json with decorated paramenters.
+example:-
+what is the weather of kolkata ?
+tool response:- {
+  city: 'Kolkata',
+  temperature: '31°C',
+  condition: 'Sunny',
+  humidity: '68%'
+}
+tool response can contains other parameteres also you have to analyse those parameters
+and the construct the response like these below.
+
+your response :- 
+{
+    "title": "<short title>",
+    "summary": "<one line summary>",
+    "items": [
+        city:<city name>',
+        temperature: <Temp>,
+        condition: <condition>,
+        humidity: <humid>,
+        "emoji":<emoji>
+        <Other param1>: <Other data 1>,
+        <Other data 2>: <Other data 2>
+    ]
+}
+
+Rule:- Answer will be in a strict JSON format.
 `

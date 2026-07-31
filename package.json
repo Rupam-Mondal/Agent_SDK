@@ -1,6 +1,6 @@
 {
   "name": "pilot-ai-sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "An OpenAI Agent SDK for building intelligent agents with tools, reasoning loops, and web capabilities.",
   "main": "./src/index.js",
   "exports": "./src/index.js",

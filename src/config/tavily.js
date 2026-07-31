@@ -1,13 +1,12 @@
 import { tavily } from "@tavily/core";
 
-const client = tavily({
-  apiKey: process.env.TAVILY_API_KEY,
-});
 
-export async function webSearch(query) {
+export async function webSearch(query , tavilyKey) {
   try {
 
-    console.log(query)
+    const client = tavily({
+      apiKey: tavilyKey,
+    });
     const result = await client.search(query, {
       maxResults: 5,
     });

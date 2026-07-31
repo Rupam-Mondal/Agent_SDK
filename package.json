@@ -1,20 +1,28 @@
 {
-  "name": "agent-sdk",
+  "name": "pilot-ai-sdk",
   "version": "1.0.0",
-  "description": "",
+  "description": "An OpenAI Agent SDK for building intelligent agents with tools, reasoning loops, and web capabilities.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "ai",
+    "agent",
+    "sdk",
+    "openai",
+    "llm"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@tavily/core": "^0.7.6",
     "axios": "^1.19.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jsdom": "^29.1.1",
     "openai": "^7.2.0"
   }
 }

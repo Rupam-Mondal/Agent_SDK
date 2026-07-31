@@ -1,6 +1,7 @@
 import { Agent } from "./agent.js";
 
 
-const AIagent = await new Agent("gpt-4o-mini").setInstructions("what is dotenv ?").setLoop(15).runLoop("give me a code how to send response to claude ? give me best approch to send request to claude");
+const AIagent = await new Agent("gpt-4o-mini" , process.env.OPEN_AI_API_KEY)
+                .liveDataQueryRun("who is current pm of India ?" , process.env.TAVILY_API_KEY)
 
 console.log(AIagent);

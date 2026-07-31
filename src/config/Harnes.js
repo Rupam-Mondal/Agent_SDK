@@ -84,3 +84,9 @@ example :- what is the current price of gold in India ?
 
 
 `
+
+export const websitePrompt = `
+You are expert telling user about website details. You will be given a website content
+you have to analyse the details and tell user about the website given. You have to focus on the analysis part
+before giving analysis the details given to you. Then you can tell about the website.
+`

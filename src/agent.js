@@ -6,6 +6,7 @@ import {
   liveDataPrompt,
   LoopingPrompt,
   normalPrompt,
+  toolAnalyse,
   websitePrompt,
 } from "./config/Harnes.js";
 import { webSearch } from "./config/tavily.js";
@@ -18,6 +19,7 @@ export class Agent {
   instructions = "";
   loop = "";
   apiKey = "";
+  tools = [];
 
   constructor(model, apiKey) {
     this.model = model;
@@ -32,10 +34,8 @@ export class Agent {
     return this;
   }
 
-  // use this method for live data fetching
-
-  async liveDataQueryRun(query , tavilyKey) {
-    const webSearchResult = await webSearch(query , tavilyKey);
+  async liveDataQueryRun(query, tavilyKey) {
+    const webSearchResult = await webSearch(query, tavilyKey);
     const interaction = await this.client.chat.completions.create({
       model: this.model,
       messages: [
@@ -148,7 +148,7 @@ export class Agent {
         messages: [
           {
             role: "system",
-            content: websitePrompt, 
+            content: websitePrompt,
           },
           {
             role: "user",
@@ -174,6 +174,47 @@ ${article.textContent.slice(0, 120000)}
       console.error("Website Scraper Error:", error);
       return `Website scraping failed: ${error.message}`;
     }
+  }
+
+  addTools(...tools) {
+    this.tools.push(...tools);
+    return this;
+  }
+
+  async useTool(query) {
+    const availableTools = this.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      method: tool.execute
+    }));
+
+    const toolAnalysis = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        {
+          role: "system",
+          content: `
+          ${toolAnalyse}
+          avaiable tools : ${JSON.stringify(availableTools, null, 2)}
+          `,
+        },
+        {
+          role: "user",
+          content: query,
+        },
+      ],
+    });
+
+    const identifiedTool = toolAnalysis.choices[0].message.content.toolName;
+    if(!identifiedTool) return toolAnalysis.choices[0].message.content;
+
+    console.log(toolAnalysis.choices[0].message.content)
+
+    // for(let i = 0 ; i < availableTools.length ; i++){
+    //   if(availableTools[i].name === identifiedTool){
+    //     availableTools
+    //   }
+    // }
   }
 
   async run() {

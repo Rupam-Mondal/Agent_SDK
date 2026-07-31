@@ -21,6 +21,9 @@ export const LoopingPrompt = `
      - Always output one step at a time wait for other step before proceding
      - Always maintain the sequesce of pipeline given in the example
      - output will be strictly in JSON format
+     - I will pass loop number you have to complete the whole iteration and come to Output step with in  that given loop number
+      suppose user tells you 50 then you can take at most 50 loops. You can complete the output before that also but take at most 50 loop
+      consider the first loop as 0th loop so for 50. you have to run for 0 - 49
 
     example:
     - "User": what is 2 + 2 - 5 * 10 / 3 ?

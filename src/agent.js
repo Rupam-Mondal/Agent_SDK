@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-import { liveDataPrompt, normalPrompt } from './config/Harnes.js';
+import { liveDataPrompt, LoopingPrompt, normalPrompt } from './config/Harnes.js';
 import { webSearch } from './config/tavily.js';
 
 dotenv.config();
@@ -45,6 +45,65 @@ export class Agent{
         const response = interaction.choices[0].message.content
 
         return response;
+    }
+
+    setLoop(loop){
+        this.loop = loop;
+        return this;
+    }
+
+ 
+
+    async runLoop(query){
+        const loop = this.loop;
+
+        if(!loop){
+            return {
+                message: "Please mention the loop number. Pass the loop number through .loop(number)"
+            }
+        }
+
+        const msg_db = [];
+
+        msg_db.push({
+            role: "user",
+            content : `${LoopingPrompt} loop number given by user:- ${loop}`
+        });
+        msg_db.push({
+            role: "user",
+            content: query
+        });     
+
+        let i = 0;
+        while(i < loop){
+            const interaction = await client.chat.completions.create({
+                model: this.model,
+                messages: msg_db,
+                response_format: {
+                    type: "json_object",
+                },
+            })
+
+            const rawresult = interaction.choices[0].message.content;
+            const parsedResult = JSON.parse(rawresult);
+
+            msg_db.push({
+                role: "assistant",
+                content: rawresult,
+            });
+
+            console.log(`${parsedResult.step} : ${parsedResult.text}`);
+
+            const step = parsedResult.step;
+            const text = parsedResult.text;
+
+            if (parsedResult.step == "Output"){
+                return {
+                    step,
+                    text
+                }
+            }
+        }
     }
 
     async run(){

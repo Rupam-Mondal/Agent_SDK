@@ -23,6 +23,8 @@ export class Agent {
   loop = "";
   apiKey = "";
   tools = [];
+  inputGuardrail = "";
+  outputGuardrail = "";
 
   constructor(model, apiKey) {
     this.model = model;
@@ -37,6 +39,33 @@ export class Agent {
     return this;
   }
 
+  inputGuardrails(guardrails) {
+    this.inputGuardrail = String(guardrails ?? "").trim();
+    return this;
+  }
+
+  outPutGuardrails(guardrails) {
+    this.outputGuardrail = String(guardrails ?? "").trim();
+    return this;
+  }
+
+  getGuardrailInstructions() {
+    if (!this.inputGuardrail && !this.outputGuardrail) {
+      return "";
+    }
+
+    return `
+
+Agent guardrails (these rules are mandatory):
+${this.inputGuardrail ? `Input guardrails: ${this.inputGuardrail}` : ""}
+${this.outputGuardrail ? `Output guardrails: ${this.outputGuardrail}` : ""}
+
+Apply input guardrails when interpreting every user-provided value. Apply output
+guardrails to your final response. If a request violates a guardrail, do not
+fulfil the unsafe part; give a short, safe explanation instead.
+`;
+  }
+
   async liveDataQueryRun(query, tavilyKey) {
     const webSearchResult = await webSearch(query, tavilyKey);
     const interaction = await this.client.chat.completions.create({
@@ -45,6 +74,7 @@ export class Agent {
         {
           role: "system",
           content: ` ${liveDataPrompt} and ${webSearchResult}
+                    ${this.getGuardrailInstructions()}
                     `,
         },
         {
@@ -77,8 +107,9 @@ export class Agent {
     const msg_db = [];
 
     msg_db.push({
-      role: "user",
-      content: `${LoopingPrompt} loop number given by user:- ${loop}`,
+      role: "system",
+      content: `${LoopingPrompt} loop number given by user:- ${loop}
+      ${this.getGuardrailInstructions()}`,
     });
     msg_db.push({
       role: "user",
@@ -151,7 +182,7 @@ export class Agent {
         messages: [
           {
             role: "system",
-            content: websitePrompt,
+            content: `${websitePrompt}\n${this.getGuardrailInstructions()}`,
           },
           {
             role: "user",
@@ -210,7 +241,10 @@ ${article.textContent.slice(0, 120000)}
       model: this.model,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: mailWritingPrompt },
+        {
+          role: "system",
+          content: `${mailWritingPrompt}\n${this.getGuardrailInstructions()}`,
+        },
         {
           role: "user",
           content: `Topic: ${topic}\n\nAdditional context: ${context || "None"}`,
@@ -287,6 +321,7 @@ ${article.textContent.slice(0, 120000)}
           content: `
           ${toolAnalyse}
           avaiable tools : ${JSON.stringify(availableTools, null, 2)}
+          ${this.getGuardrailInstructions()}
           `,
         },
         {
@@ -321,6 +356,7 @@ ${article.textContent.slice(0, 120000)}
             ${toolOutputAnalysis}
             response :- ${JSON.stringify(response)}
             user query :- ${query}
+            ${this.getGuardrailInstructions()}
           `
         }
       ]
@@ -335,7 +371,7 @@ ${article.textContent.slice(0, 120000)}
       messages: [
         {
           role: "system",
-          content: normalPrompt,
+          content: `${normalPrompt}\n${this.getGuardrailInstructions()}`,
         },
         {
           role: "user",

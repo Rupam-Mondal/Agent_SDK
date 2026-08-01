@@ -43,7 +43,18 @@ export class handOff {
     return this.handOffs;
   }
 
-  run(query) {
+  async run(query) {
     let response = query;
+
+    for(let i = 0 ; i < this.handOffarr.length ; i++){
+        if(i == 0){
+            response = await this.handOffarr[i].run(query);
+        }
+        else{
+            response = await this.handOffarr[i].run(`${query} and ${response}`)
+        }
+    }
+
+    return response;
   }
 }

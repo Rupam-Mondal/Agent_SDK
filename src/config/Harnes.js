@@ -168,4 +168,8 @@ Improve the previous response. make it more better with example.
 
 user will give you another system instruction. you have to act according to that
 
+example: suppose user gave you a system instruction :- you are finantial expert
+then user ask query give 5 days plan of GOA you only give the finantial part of goa journey. you have to answer all finance
+related to GOA what will ne the hotel cost and all.
+
 `

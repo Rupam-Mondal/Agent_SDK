@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -9,6 +10,7 @@ import {
   toolAnalyse,
   toolOutputAnalysis,
   websitePrompt,
+  mailWritingPrompt,
 } from "./config/Harnes.js";
 import { webSearch } from "./config/tavily.js";
 
@@ -175,6 +177,94 @@ ${article.textContent.slice(0, 120000)}
       console.error("Website Scraper Error:", error);
       return `Website scraping failed: ${error.message}`;
     }
+  }
+
+
+  async sendEmail(to, topic, context = "", options = {}) {
+    if (typeof to !== "string" || !to.trim()) {
+      throw new Error("A recipient email address is required.");
+    }
+
+    if (typeof topic !== "string" || !topic.trim()) {
+      throw new Error("An email topic is required.");
+    }
+
+    const smtp = options.smtp ?? {
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: process.env.SMTP_SECURE === "true",
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    };
+    const from = options.from ?? process.env.MAIL_FROM ?? process.env.SMTP_USER;
+
+    if (!from) {
+      throw new Error(
+        "Email sender is not configured. Set MAIL_FROM or SMTP_USER in your environment.",
+      );
+    }
+
+    const emailDraft = await this.client.chat.completions.create({
+      model: this.model,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: mailWritingPrompt },
+        {
+          role: "user",
+          content: `Topic: ${topic}\n\nAdditional context: ${context || "None"}`,
+        },
+      ],
+    });
+
+    let email;
+    try {
+      email = JSON.parse(emailDraft.choices[0].message.content);
+    } catch {
+      throw new Error("The model returned an invalid email draft. Please try again.");
+    }
+
+    if (!email.subject || !email.text || !email.html) {
+      throw new Error("The model returned an incomplete email draft. Please try again.");
+    }
+
+    const attachments = options.attachments ?? options.files ?? [];
+    if (!Array.isArray(attachments)) {
+      throw new Error("Email attachments must be an array.");
+    }
+
+    const draft = {
+      to: to.trim(),
+      from,
+      subject: String(email.subject).replace(/[\r\n]+/g, " ").trim(),
+      text: String(email.text).trim(),
+      html: String(email.html).trim(),
+      attachments,
+    };
+
+    if (options.preview === true) {
+      return { sent: false, preview: true, ...draft };
+    }
+
+    if (!smtp.host || !smtp.auth?.user || !smtp.auth?.pass) {
+      throw new Error(
+        "SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in your environment.",
+      );
+    }
+
+    const transporter = nodemailer.createTransport(smtp);
+    const result = await transporter.sendMail(draft);
+
+    return {
+      sent: true,
+      messageId: result.messageId,
+      accepted: result.accepted,
+      rejected: result.rejected,
+      subject: draft.subject,
+      to: draft.to,
+      attachmentCount: attachments.length,
+    };
   }
 
   addTools(...tools) {

@@ -32,6 +32,7 @@ console.log(answer);
 | `setLoop(number)` | Set the number of reasoning steps. |
 | `runLoop(query)` | Run step-by-step reasoning for a query. |
 | `webScrap(url)` | Read a website and return an AI-generated analysis. |
+| `sendEmail(to, topic, context, options)` | Write and send a polished email through SMTP. |
 | `addTools(...tools)` | Add tools to the agent. |
 | `useTool(query)` | Let the agent select and use a tool. |
 
@@ -207,6 +208,105 @@ const result = await agent
   .runLoop("Create a simple plan to learn React in 30 days");
 
 console.log(result);
+```
+
+## AI-written email
+
+`sendEmail()` turns a short topic and a little context into a polished email
+with an appropriate subject, then delivers it through your SMTP account. Your
+SMTP password is never passed to the model; it stays in environment variables.
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-address@gmail.com
+SMTP_PASS=your-app-password
+MAIL_FROM=your-address@gmail.com
+```
+
+For Gmail, use an [app password](https://support.google.com/accounts/answer/185833),
+not your normal account password.
+
+```js
+import { Agent } from "pilot-ai-sdk";
+
+const agent = new Agent("your-model-name", process.env.OPEN_AI_API_KEY);
+
+const result = await agent.sendEmail(
+  "client@example.com",
+  "Follow up after our product demo",
+  "Thank them for attending today. Mention the analytics dashboard and offer a 14-day trial. Sign it from Rupam.",
+);
+
+console.log(result); // { sent: true, subject, messageId, ... }
+```
+
+### Send with a file attachment
+
+Files are optional and are sent by Nodemailer; their contents are not passed to
+the model. Use `attachments` (or the alias `files`) with standard Nodemailer
+attachment objects.
+
+```js
+const result = await agent.sendEmail(
+  "client@example.com",
+  "Your project quotation",
+  "Write a concise note saying the quotation is attached. Sign from Rupam.",
+  {
+    attachments: [
+      { filename: "quotation.pdf", path: "./documents/quotation.pdf" },
+      { filename: "overview.txt", content: "Project overview attached." },
+    ],
+  },
+);
+```
+
+### One-call email with GPT-4o mini
+
+`sendEmail` is also exported from `index.js`. It uses `gpt-4o-mini` and saves
+you from creating an `Agent` for a single email. It reads
+`OPEN_AI_API_KEY` from your environment, and accepts the same positional
+arguments as `agent.sendEmail()`.
+
+```js
+import { sendEmail } from "pilot-ai-sdk";
+
+const result = await sendEmail(
+  "client@example.com",
+  "Thank you for your order",
+  "Write warmly and let them know that delivery takes 3–5 business days.",
+  { attachments: [{ filename: "invoice.pdf", path: "./invoice.pdf" }] },
+);
+```
+
+The constructor remains only `new Agent(model, apiKey)`. If needed, SMTP
+settings can be supplied for one individual email call instead of environment
+variables:
+
+```js
+await agent.sendEmail("client@example.com", "Welcome", "Keep it warm.", {
+  from: "hello@company.com",
+  smtp: {
+    host: "smtp.company.com",
+    port: 587,
+    secure: false,
+    auth: { user: "hello@company.com", pass: process.env.SMTP_PASS },
+  },
+});
+```
+
+Generate and inspect an email without delivering it:
+
+```js
+const preview = await agent.sendEmail(
+  "client@example.com",
+  "Welcome to our service",
+  "Keep it friendly and concise.",
+  { preview: true },
+);
+
+console.log(preview.subject, preview.html);
 ```
 
 ## Add your own tools

@@ -150,3 +150,22 @@ your response :-
 
 Rule:- Answer will be in a strict JSON format.
 `
+
+export const handOffagentPrompt = `
+You are a handoff agent.
+
+You will receive either receive only question. or receive
+• Original Query
+• Previous Agent Response
+
+if these is just question then analyse the question give best possible easy to understand
+result
+
+if question and response is there then
+Continue the task.
+Do not restart.
+Improve the previous response. make it more better with example.
+
+user will give you another system instruction. you have to act according to that
+
+`

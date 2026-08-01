@@ -79,9 +79,31 @@ const result = await agent
 console.log(result);
 ```
 
-## Add custom tools
+## Add your own tools
 
-Each tool needs a `name`, `description`, and async `execute` function.
+The SDK does not provide built-in tools. The functions in its internal `tool.js`
+file are only used for development/testing and should not be imported or relied
+on by your application.
+
+Pass your own tool object to `addTools()`. Every tool must follow this format:
+
+```js
+const myTool = {
+  name: "toolName",
+  description: "Explain clearly what this tool does and the inputs it needs.",
+
+  async execute({ /* arguments selected by the agent */ }) {
+    // Perform your application-specific work here.
+    return { /* result */ };
+  },
+};
+```
+
+`name` and `description` help the agent choose the right tool. `execute` must
+be an async function that accepts an arguments object and returns the tool
+result.
+
+For example:
 
 ```js
 import { Agent } from "pilot-ai-sdk";
@@ -100,47 +122,6 @@ const agent = new Agent(model, process.env.OPEN_AI_API_KEY);
 const result = await agent
   .addTools(wordCounter)
   .useTool("Count words in: Pilot AI SDK is easy to use");
-
-console.log(result);
-```
-
-## Built-in tools
-
-```js
-import {
-  getWeather,
-  randomJoke,
-  predictGender,
-  predictAge,
-  calculator,
-  currentTime,
-  searchWeb,
-  generateUUID,
-} from "pilot-ai-sdk";
-```
-
-| Tool | Example query |
-| --- | --- |
-| `getWeather` | `What is the weather in Kolkata?` |
-| `randomJoke` | `Tell me a programming joke.` |
-| `predictGender` | `Predict gender for Alex.` |
-| `predictAge` | `Predict age for Rupam.` |
-| `calculator` | `Calculate (25 + 5) * 2.` |
-| `currentTime` | `What is the current time?` |
-| `searchWeb` | `Search JavaScript tutorials.` |
-| `generateUUID` | `Generate a UUID.` |
-
-### Built-in tool example
-
-```js
-import { Agent, calculator, currentTime } from "pilot-ai-sdk";
-
-const model = "your-model-name";
-const agent = new Agent(model, process.env.OPEN_AI_API_KEY);
-
-const result = await agent
-  .addTools(calculator, currentTime)
-  .useTool("Calculate (45 + 15) / 3");
 
 console.log(result);
 ```

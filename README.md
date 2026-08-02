@@ -63,6 +63,89 @@ The guardrails are included in the system instructions for `run()`,
 | `addTools(...tools)` | Add tools to the agent. |
 | `useTool(query, options)` | Let the agent select and use a tool. |
 
+## Conversation memory
+
+Set `memory: true` on any response-producing Agent method to keep context from
+earlier calls. Memory is available on `run`, `liveDataQueryRun`, `runLoop`,
+`webScrap`, `sendEmail`, and `useTool`.
+
+Memory is off by default. Use `memory: false` (or omit the option) when a call
+must not read or write previous conversation context.
+
+```js
+const agent = new Agent("gpt-4o-mini", process.env.OPEN_AI_API_KEY);
+
+const firstAnswer = await agent
+  .setInstructions("My name is Asha and I am planning a Japan trip.")
+  .run({ memory: true });
+
+const secondAnswer = await agent
+  .setInstructions("What destination did I say I was planning for?")
+  .run({ memory: true });
+```
+
+### Where is memory stored? Can users see it?
+
+Yes. The SDK creates a plain-text file named `agent-memory.txt` in the current
+working directory of the application that uses the SDK—normally the project
+root where the user runs `node`. It is **not** hidden, encrypted, or stored in
+the published npm package. Users can open, inspect, edit, back up, or delete it
+with any text editor.
+
+Each entry contains the exact user question, the exact assistant response, and
+a short `Main conclusion`. For future requests, the SDK loads only the recent
+conclusions (up to 20) into the model context. This keeps the request compact
+while preserving the full conversation record in the text file.
+
+Saving an entry makes one additional model request to create its short
+conclusion, so memory-enabled calls use additional model tokens and cost.
+
+Do not enable memory for sensitive conversations unless storing that text file
+locally is acceptable for your application and users.
+
+### Turn memory on or off
+
+Pass `memory` in the same `options` argument used for streaming:
+
+| Method | Memory enabled | Memory disabled / normal behavior |
+| --- | --- | --- |
+| `run` | `agent.run({ memory: true })` | `agent.run()` or `agent.run({ memory: false })` |
+| `liveDataQueryRun` | `agent.liveDataQueryRun(query, key, { memory: true })` | `agent.liveDataQueryRun(query, key)` |
+| `runLoop` | `agent.runLoop(query, { memory: true })` | `agent.runLoop(query)` |
+| `webScrap` | `agent.webScrap(url, { memory: true })` | `agent.webScrap(url)` |
+| `sendEmail` | `agent.sendEmail(to, topic, context, { memory: true })` | `agent.sendEmail(to, topic, context)` |
+| `useTool` | `agent.useTool(query, { memory: true })` | `agent.useTool(query)` |
+
+Memory and streaming can be used together:
+
+```js
+agent.setInstructions("Continue our Japan trip planning conversation.");
+
+for await (const chunk of agent.run({ stream: true, memory: true })) {
+  process.stdout.write(chunk);
+}
+```
+
+The memory entry is saved after the normal response finishes, or after a
+streamed response has been fully consumed. For `sendEmail`, consume the whole
+stream so that both the memory entry and the one email delivery can complete.
+
+### Separate memory files for separate users
+
+By default, all memory-enabled agents running in the same working directory use
+the same `agent-memory.txt` file. For a multi-user app, choose a different file
+for each user with `memoryFile`. Keep the filename/path under your app's
+control; do not use raw, unvalidated user input as a file path.
+
+```js
+const answer = await agent
+  .setInstructions("Summarize my preferences.")
+  .run({
+    memory: true,
+    memoryFile: "memory/asha.txt",
+  });
+```
+
 ## Streaming responses
 
 Every Agent method that generates an AI response supports a `stream` option:

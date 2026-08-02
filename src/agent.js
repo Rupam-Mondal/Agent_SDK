@@ -66,9 +66,46 @@ fulfil the unsafe part; give a short, safe explanation instead.
 `;
   }
 
-  async liveDataQueryRun(query, tavilyKey) {
+
+  shouldStream(options = {}) {
+    return options?.stream === true;
+  }
+
+  createTextCompletion(request, options = {}) {
+    if (this.shouldStream(options)) {
+      return this.streamTextCompletion(request);
+    }
+
+    return this.client.chat.completions
+      .create({ ...request, stream: false })
+      .then((completion) => completion.choices[0]?.message?.content ?? "");
+  }
+
+  async *streamTextCompletion(request) {
+    const stream = await this.client.chat.completions.create({
+      ...request,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const content = chunk.choices?.[0]?.delta?.content;
+      if (content) {
+        yield content;
+      }
+    }
+  }
+
+  liveDataQueryRun(query, tavilyKey, options = {}) {
+    if (this.shouldStream(options)) {
+      return this.liveDataQueryRunStream(query, tavilyKey);
+    }
+
+    return this.liveDataQueryRunResponse(query, tavilyKey);
+  }
+
+  async liveDataQueryRunResponse(query, tavilyKey) {
     const webSearchResult = await webSearch(query, tavilyKey);
-    const interaction = await this.client.chat.completions.create({
+    return this.createTextCompletion({
       model: this.model,
       messages: [
         {
@@ -83,10 +120,29 @@ fulfil the unsafe part; give a short, safe explanation instead.
         },
       ],
     });
+  }
 
-    const response = interaction.choices[0].message.content;
+  async *liveDataQueryRunStream(query, tavilyKey) {
+    const webSearchResult = await webSearch(query, tavilyKey);
 
-    return response;
+    yield* this.createTextCompletion(
+      {
+        model: this.model,
+        messages: [
+          {
+            role: "system",
+            content: ` ${liveDataPrompt} and ${webSearchResult}
+                    ${this.getGuardrailInstructions()}
+                    `,
+          },
+          {
+            role: "user",
+            content: query,
+          },
+        ],
+      },
+      { stream: true },
+    );
   }
 
   setLoop(loop) {
@@ -94,7 +150,15 @@ fulfil the unsafe part; give a short, safe explanation instead.
     return this;
   }
 
-  async runLoop(query) {
+  runLoop(query, options = {}) {
+    if (this.shouldStream(options)) {
+      return this.runLoopStream(query);
+    }
+
+    return this.runLoopResponse(query);
+  }
+
+  async runLoopResponse(query) {
     const loop = this.loop;
 
     if (!loop) {
@@ -121,6 +185,7 @@ fulfil the unsafe part; give a short, safe explanation instead.
       const interaction = await this.client.chat.completions.create({
         model: this.model,
         messages: msg_db,
+        stream: false,
         response_format: {
           type: "json_object",
         },
@@ -145,10 +210,60 @@ fulfil the unsafe part; give a short, safe explanation instead.
           text,
         };
       }
+
+      i += 1;
     }
   }
 
-  async webScrap(websiteURL) {
+  async *runLoopStream(query) {
+    const loop = this.loop;
+
+    if (!loop) {
+      yield JSON.stringify({
+        message:
+          "Please mention the loop number. Pass the loop number through .loop(number)",
+      });
+      return;
+    }
+
+    const msg_db = [
+      {
+        role: "system",
+        content: `${LoopingPrompt} loop number given by user:- ${loop}
+      ${this.getGuardrailInstructions()}`,
+      },
+      { role: "user", content: query },
+    ];
+
+    for (let i = 0; i < loop; i += 1) {
+      let rawresult = "";
+      for await (const chunk of this.createTextCompletion(
+        {
+          model: this.model,
+          messages: msg_db,
+          response_format: { type: "json_object" },
+        },
+        { stream: true },
+      )) {
+        rawresult += chunk;
+        yield chunk;
+      }
+
+      const parsedResult = JSON.parse(rawresult);
+      msg_db.push({ role: "assistant", content: rawresult });
+      if (parsedResult.step === "Output") return;
+    }
+  }
+
+  webScrap(websiteURL, options = {}) {
+    if (this.shouldStream(options)) {
+      return this.webScrapStream(websiteURL);
+    }
+
+    return this.webScrapResponse(websiteURL);
+  }
+
+  async webScrapResponse(websiteURL) {
     try {
       new URL(websiteURL);
 
@@ -177,7 +292,7 @@ fulfil the unsafe part; give a short, safe explanation instead.
         return "Unable to extract readable content from this website.";
       }
 
-      const interaction = await this.client.chat.completions.create({
+      return this.createTextCompletion({
         model: this.model,
         messages: [
           {
@@ -202,24 +317,81 @@ ${article.textContent.slice(0, 120000)}
           },
         ],
       });
-
-      return interaction.choices[0].message.content;
     } catch (error) {
       console.error("Website Scraper Error:", error);
       return `Website scraping failed: ${error.message}`;
     }
   }
 
+  async *webScrapStream(websiteURL) {
+    try {
+      new URL(websiteURL);
+      const response = await fetch(websiteURL, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AgentSDK/1.0",
+        },
+      });
 
-  async sendEmail(to, topic, context = "", options = {}) {
-    if (typeof to !== "string" || !to.trim()) {
-      throw new Error("A recipient email address is required.");
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch website (${response.status} ${response.statusText})`,
+        );
+      }
+
+      const html = await response.text();
+      const dom = new JSDOM(html, { url: websiteURL });
+      const article = new Readability(dom.window.document).parse();
+
+      if (!article) {
+        yield "Unable to extract readable content from this website.";
+        return;
+      }
+
+      yield* this.createTextCompletion(
+        {
+          model: this.model,
+          messages: [
+            {
+              role: "system",
+              content: `${websitePrompt}\n${this.getGuardrailInstructions()}`,
+            },
+            {
+              role: "user",
+              content: `
+Website URL:
+${websiteURL}
+
+Website Title:
+${article.title}
+
+Website Description:
+${article.excerpt ?? "No description"}
+
+Website Content:
+${article.textContent.slice(0, 120000)}
+                    `.trim(),
+            },
+          ],
+        },
+        { stream: true },
+      );
+    } catch (error) {
+      console.error("Website Scraper Error:", error);
+      yield `Website scraping failed: ${error.message}`;
+    }
+  }
+
+
+  sendEmail(to, topic, context = "", options = {}) {
+    if (this.shouldStream(options)) {
+      return this.sendEmailStream(to, topic, context, options);
     }
 
-    if (typeof topic !== "string" || !topic.trim()) {
-      throw new Error("An email topic is required.");
-    }
+    return this.sendEmailResponse(to, topic, context, options);
+  }
 
+  getEmailSettings(options) {
     const smtp = options.smtp ?? {
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT ?? 587),
@@ -237,28 +409,10 @@ ${article.textContent.slice(0, 120000)}
       );
     }
 
-    const emailDraft = await this.client.chat.completions.create({
-      model: this.model,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `${mailWritingPrompt}\n${this.getGuardrailInstructions()}`,
-        },
-        {
-          role: "user",
-          content: `Topic: ${topic}\n\nAdditional context: ${context || "None"}`,
-        },
-      ],
-    });
+    return { smtp, from };
+  }
 
-    let email;
-    try {
-      email = JSON.parse(emailDraft.choices[0].message.content);
-    } catch {
-      throw new Error("The model returned an invalid email draft. Please try again.");
-    }
-
+  async deliverEmailDraft(email, to, options, smtp, from) {
     if (!email.subject || !email.text || !email.html) {
       throw new Error("The model returned an incomplete email draft. Please try again.");
     }
@@ -289,7 +443,6 @@ ${article.textContent.slice(0, 120000)}
 
     const transporter = nodemailer.createTransport(smtp);
     const result = await transporter.sendMail(draft);
-
     return {
       sent: true,
       messageId: result.messageId,
@@ -301,12 +454,108 @@ ${article.textContent.slice(0, 120000)}
     };
   }
 
+  async sendEmailResponse(to, topic, context = "", options = {}) {
+    if (typeof to !== "string" || !to.trim()) {
+      throw new Error("A recipient email address is required.");
+    }
+
+    if (typeof topic !== "string" || !topic.trim()) {
+      throw new Error("An email topic is required.");
+    }
+
+    const { smtp, from } = this.getEmailSettings(options);
+
+    const emailDraft = await this.client.chat.completions.create({
+      model: this.model,
+      stream: false,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `${mailWritingPrompt}\n${this.getGuardrailInstructions()}`,
+        },
+        {
+          role: "user",
+          content: `Topic: ${topic}\n\nAdditional context: ${context || "None"}`,
+        },
+      ],
+    });
+
+    let email;
+    try {
+      email = JSON.parse(emailDraft.choices[0].message.content);
+    } catch {
+      throw new Error("The model returned an invalid email draft. Please try again.");
+    }
+
+    return this.deliverEmailDraft(email, to, options, smtp, from);
+  }
+
+  async *sendEmailStream(to, topic, context = "", options = {}) {
+    if (typeof to !== "string" || !to.trim()) {
+      throw new Error("A recipient email address is required.");
+    }
+    if (typeof topic !== "string" || !topic.trim()) {
+      throw new Error("An email topic is required.");
+    }
+
+    const { smtp, from } = this.getEmailSettings(options);
+    let rawDraft = "";
+    yield* this.collectStream(
+      this.createTextCompletion(
+        {
+          model: this.model,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: `${mailWritingPrompt}\n${this.getGuardrailInstructions()}`,
+            },
+            {
+              role: "user",
+              content: `Topic: ${topic}\n\nAdditional context: ${context || "None"}`,
+            },
+          ],
+        },
+        { stream: true },
+      ),
+      (chunk) => {
+        rawDraft += chunk;
+      },
+    );
+
+    let email;
+    try {
+      email = JSON.parse(rawDraft);
+    } catch {
+      throw new Error("The model returned an invalid email draft. Please try again.");
+    }
+
+    // This last item lets streaming callers know whether the email was sent.
+    yield JSON.stringify(await this.deliverEmailDraft(email, to, options, smtp, from));
+  }
+
+  async *collectStream(stream, onChunk) {
+    for await (const chunk of stream) {
+      onChunk(chunk);
+      yield chunk;
+    }
+  }
+
   addTools(...tools) {
     this.tools.push(...tools);
     return this;
   }
 
-  async useTool(query) {
+  useTool(query, options = {}) {
+    if (this.shouldStream(options)) {
+      return this.useToolStream(query);
+    }
+
+    return this.useToolResponse(query);
+  }
+
+  async getToolResult(query) {
     const availableTools = this.tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -315,6 +564,7 @@ ${article.textContent.slice(0, 120000)}
 
     const toolAnalysis = await this.client.chat.completions.create({
       model: this.model,
+      stream: false,
       messages: [
         {
           role: "system",
@@ -331,42 +581,67 @@ ${article.textContent.slice(0, 120000)}
       ],
     });
 
-    const identifiedTool = JSON.parse(toolAnalysis.choices[0].message.content).toolName;
-    if(!identifiedTool) return toolAnalysis.choices[0].message.content;
+    const analysis = toolAnalysis.choices[0].message.content;
+    const parsedAnalysis = JSON.parse(analysis);
+    const identifiedTool = parsedAnalysis.toolName;
+    if (!identifiedTool) {
+      return { directResponse: analysis };
+    }
 
-
-    let args = JSON.parse(toolAnalysis.choices[0].message.content).args
-
-
-
-    let response = ""
-
-    for(let i = 0 ; i < availableTools.length ; i++){
-      if(availableTools[i].name === identifiedTool){
-        response = await availableTools[i].method(args)
+    let response = "";
+    for (const tool of availableTools) {
+      if (tool.name === identifiedTool) {
+        response = await tool.method(parsedAnalysis.args);
       }
     }
 
-    const finalResult = await await this.client.chat.completions.create({
-      model : this.model,
-      messages :[
+    return { response };
+  }
+
+  toolResultRequest(query, response) {
+    return {
+      model: this.model,
+      messages: [
         {
-          role:"system",
-          content:`
+          role: "system",
+          content: `
             ${toolOutputAnalysis}
             response :- ${JSON.stringify(response)}
             user query :- ${query}
             ${this.getGuardrailInstructions()}
-          `
-        }
-      ]
-    })
+          `,
+        },
+      ],
+    };
+  }
+
+  async useToolResponse(query) {
+    const result = await this.getToolResult(query);
+    if (result.directResponse !== undefined) return result.directResponse;
+
+    const finalResult = await this.client.chat.completions.create({
+      ...this.toolResultRequest(query, result.response),
+      stream: false,
+    });
 
     return JSON.parse(finalResult.choices[0].message.content);
   }
 
-  async run() {
-    const interaction = await this.client.chat.completions.create({
+  async *useToolStream(query) {
+    const result = await this.getToolResult(query);
+    if (result.directResponse !== undefined) {
+      yield result.directResponse;
+      return;
+    }
+
+    yield* this.createTextCompletion(
+      this.toolResultRequest(query, result.response),
+      { stream: true },
+    );
+  }
+
+  run(options = {}) {
+    return this.createTextCompletion({
       model: this.model,
       messages: [
         {
@@ -378,10 +653,6 @@ ${article.textContent.slice(0, 120000)}
           content: this.instructions,
         },
       ],
-    });
-
-    const response = interaction.choices[0].message.content;
-
-    return response;
+    }, options);
   }
 }

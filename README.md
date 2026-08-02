@@ -54,14 +54,196 @@ The guardrails are included in the system instructions for `run()`,
 | Method | Use |
 | --- | --- |
 | `setInstructions(text)` | Set the prompt for `run()`. |
-| `run()` | Get a normal AI response. |
-| `liveDataQueryRun(query, tavilyKey)` | Search the web and answer from live results. |
+| `run(options)` | Get an AI response. Pass `{ stream: true }` to receive chunks. |
+| `liveDataQueryRun(query, tavilyKey, options)` | Search the web and answer from live results. |
 | `setLoop(number)` | Set the number of reasoning steps. |
-| `runLoop(query)` | Run step-by-step reasoning for a query. |
-| `webScrap(url)` | Read a website and return an AI-generated analysis. |
-| `sendEmail(to, topic, context, options)` | Write and send a polished email through SMTP. |
+| `runLoop(query, options)` | Run step-by-step reasoning for a query. |
+| `webScrap(url, options)` | Read a website and return an AI-generated analysis. |
+| `sendEmail(to, topic, context, options)` | Write and send a polished email through SMTP. `options` also accepts `stream`. |
 | `addTools(...tools)` | Add tools to the agent. |
-| `useTool(query)` | Let the agent select and use a tool. |
+| `useTool(query, options)` | Let the agent select and use a tool. |
+
+## Streaming responses
+
+Every Agent method that generates an AI response supports a `stream` option:
+`run`, `liveDataQueryRun`, `runLoop`, `webScrap`, `sendEmail`, and `useTool`.
+
+Use normal mode when you need the complete result before doing anything with it.
+This is the default, so omitting `stream` is exactly the same as passing
+`{ stream: false }`.
+
+```js
+const answer = await agent.run();
+// Same result:
+const anotherAnswer = await agent.run({ stream: false });
+
+console.log(answer);
+```
+
+Use streaming mode when you want to show the answer immediately, such as in a
+terminal chat, a web UI, or a live status panel. Pass `{ stream: true }` in the
+method's `options` position, then read the returned async iterable with
+`for await...of`. Each `chunk` is a string containing the next piece of text.
+
+```js
+for await (const chunk of agent.run({ stream: true })) {
+  process.stdout.write(chunk);
+}
+
+process.stdout.write("\n");
+```
+
+Do not use `await` directly on a streamed method. `await` is for normal mode;
+`for await...of` is for `{ stream: true }`.
+
+### `run()`
+
+`run()` uses the instructions set by `setInstructions()`.
+
+```js
+const agent = new Agent("gpt-4o-mini", process.env.OPEN_AI_API_KEY)
+  .setInstructions("Explain JavaScript promises in simple words.");
+
+// Normal response: one complete string.
+const answer = await agent.run({ stream: false });
+
+// Streaming response: text arrives in chunks.
+for await (const chunk of agent.run({ stream: true })) {
+  process.stdout.write(chunk);
+}
+```
+
+### `liveDataQueryRun()`
+
+Web search finishes first; the AI-written answer then streams.
+
+```js
+// Normal response
+const answer = await agent.liveDataQueryRun(
+  "What are the latest AI news?",
+  process.env.TAVILY_API_KEY,
+  { stream: false },
+);
+
+// Streaming response
+for await (const chunk of agent.liveDataQueryRun(
+  "What are the latest AI news?",
+  process.env.TAVILY_API_KEY,
+  { stream: true },
+)) {
+  process.stdout.write(chunk);
+}
+```
+
+### `runLoop()`
+
+Set a loop count before calling this method. In normal mode it returns the final
+`{ step, text }` result. In streaming mode, it yields the JSON text produced at
+each reasoning step as it arrives.
+
+```js
+const planner = new Agent("gpt-4o-mini", process.env.OPEN_AI_API_KEY).setLoop(3);
+
+// Normal response
+const result = await planner.runLoop("Create a three-step React learning plan", {
+  stream: false,
+});
+console.log(result.text);
+
+// Streaming response
+for await (const chunk of planner.runLoop(
+  "Create a three-step React learning plan",
+  { stream: true },
+)) {
+  process.stdout.write(chunk);
+}
+```
+
+### `webScrap()`
+
+The page is downloaded and read first; the website analysis then streams.
+
+```js
+// Normal response
+const analysis = await agent.webScrap("https://example.com", { stream: false });
+
+// Streaming response
+for await (const chunk of agent.webScrap("https://example.com", {
+  stream: true,
+})) {
+  process.stdout.write(chunk);
+}
+```
+
+### `sendEmail()`
+
+In normal mode this returns the email delivery result. In streaming mode, the
+AI-generated email draft JSON is yielded as it is written. After you consume
+every chunk, the SDK sends the email (unless `preview: true`) and yields one
+final JSON chunk with the delivery result. Always consume the entire stream if
+you expect the email to be sent.
+
+```js
+// Normal response: waits for drafting and delivery.
+const result = await agent.sendEmail(
+  "client@example.com",
+  "Welcome",
+  "Keep it friendly and concise.",
+  { stream: false },
+);
+
+// Streaming response: the draft appears immediately, then the final chunk
+// contains the send/preview result.
+for await (const chunk of agent.sendEmail(
+  "client@example.com",
+  "Welcome",
+  "Keep it friendly and concise.",
+  { stream: true },
+)) {
+  process.stdout.write(chunk);
+}
+```
+
+`stream` can be combined with the other email options:
+
+```js
+const streamOptions = {
+  stream: true,
+  preview: true, // Draft only; do not deliver.
+  attachments: [{ filename: "guide.pdf", path: "./guide.pdf" }],
+};
+```
+
+### `useTool()`
+
+The agent first selects and runs the appropriate tool. With streaming enabled,
+its final AI-written answer is yielded in chunks.
+
+```js
+const wordCounter = {
+  name: "wordCounter",
+  description: "Count words in text.",
+  async execute({ text }) {
+    return { count: text.trim().split(/\s+/).filter(Boolean).length };
+  },
+};
+
+const toolAgent = new Agent("gpt-4o-mini", process.env.OPEN_AI_API_KEY)
+  .addTools(wordCounter);
+
+// Normal response
+const result = await toolAgent.useTool("Count words in: Pilot AI SDK is easy", {
+  stream: false,
+});
+
+// Streaming response
+for await (const chunk of toolAgent.useTool(
+  "Count words in: Pilot AI SDK is easy",
+  { stream: true },
+)) {
+  process.stdout.write(chunk);
+}
+```
 
 ## Handoff agents
 
